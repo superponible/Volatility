@@ -30,15 +30,10 @@ class malsysproc(common.AbstractWindowsCommand):
     """Find malware hiding in plain sight as system processes"""
    
     # Add functionality to look for child processes that don't belong
-
     # Add functionality to deal with process injection
-
     # Test if network connections are occuring
-
     # Add functionality to deal with process owners
-
     # Look for cmd.exe running from weird processes
-
     # Tie winlogon/wininit with csrss
 
     def check_name(self, process, procname):
@@ -51,7 +46,10 @@ class malsysproc(common.AbstractWindowsCommand):
 	    
     def check_ppid(self, process, parentpid):
     # Ensure process was created by correct parent
-	return process.InheritedFromUniqueProcessId == parentpid
+        if parentpid is None:
+            return None
+        else:
+	    return process.InheritedFromUniqueProcessId == parentpid
 
     def check_time(self, process, name, ctime):
     # Ensure the process was created within 10 seconds of the parent process (have not performed complete testing for time)
@@ -62,7 +60,7 @@ class malsysproc(common.AbstractWindowsCommand):
 		return process.CreateTime <= ctime
 	if name == "csrss" or name == "winlogon":
 	    return None	
-	return process.CreateTime < ctime + 10
+	return process.CreateTime < ctime + 60
 
     def check_priority(self, process, priority):
     # Ensure the process is running under the correct base priority
@@ -100,6 +98,12 @@ class malsysproc(common.AbstractWindowsCommand):
 	    else:
 		cmdline = False
 	    return cmdline
+	elif "csrss" in cmdline:
+            csrss_re = re.compile(cmdline)
+            if csrss_re.search(str(process.Peb.ProcessParameters.CommandLine).lower()):
+                return True
+            else:
+                return False
 	else:
 	    return str(process.Peb.ProcessParameters.CommandLine).lower() == cmdline
 
@@ -112,39 +116,55 @@ class malsysproc(common.AbstractWindowsCommand):
     def build_lists(self):
 	namelist = {}
 	namelist['smss'] = "smss.exe"
-	namelist['csrss'] = "csrss.exe"
-	namelist['winlogon'] = "winlogon.exe"
+	namelist['csrssXP'] = "csrss.exe"
+	namelist['csrss7'] = "csrss.exe"
+	namelist['winlogonXP'] = "winlogon.exe"
+	namelist['winlogon7'] = "winlogon.exe"
 	namelist['services'] = "services.exe"
 	namelist['lsass'] = "lsass.exe"
 	namelist['svchost'] = "svchost.exe"
 	namelist['spoolsv'] = "spoolsv.exe"
+	namelist['wininitXP'] = "wininit.exe"
+	namelist['wininit7'] = "wininit.exe"
 
 	pathlist = {}
 	pathlist['smss'] = "\systemroot\system32\smss.exe"
-	pathlist['csrss'] = "\??\c:\windows\system32\csrss.exe"
-	pathlist['winlogon'] = "\??\c:\windows\system32\winlogon.exe"
+	pathlist['csrssXP'] = "\??\c:\windows\system32\csrss.exe"
+	pathlist['csrss7'] = "c:\windows\system32\csrss.exe"
+	pathlist['winlogonXP'] = "\??\c:\windows\system32\winlogon.exe"
+	pathlist['winlogon7'] = "c:\windows\system32\winlogon.exe"
 	pathlist['services'] = "c:\windows\system32\services.exe"
 	pathlist['lsass'] = "c:\windows\system32\lsass.exe"
 	pathlist['svchost'] = "c:\windows\system32\svchost.exe"
 	pathlist['spoolsv'] = "c:\windows\system32\spoolsv.exe"
+	pathlist['wininitXP'] = "c:\windows\system32\wininit.exe"
+	pathlist['wininit7'] = "c:\windows\system32\wininit.exe"
 
 	prioritylist = {}
 	prioritylist['smss'] = 11
-	prioritylist['csrss'] = 13
-	prioritylist['winlogon'] = 13 
+	prioritylist['csrssXP'] = 13
+	prioritylist['csrss7'] = 13
+	prioritylist['winlogonXP'] = 13 
+	prioritylist['winlogon7'] = 13 
 	prioritylist['services'] = 9
 	prioritylist['lsass'] = 9
 	prioritylist['svchost'] = 8 
 	prioritylist['spoolsv'] = 8
+	prioritylist['wininitXP'] = 13
+	prioritylist['wininit7'] = 13
 
 	cmdlinelist = {}
 	cmdlinelist['smss'] = "\systemroot\system32\smss.exe"
-	cmdlinelist['csrss'] = "c:\windows\system32\csrss.exe objectdirectory=\windows sharedsection=1024,3072,512 windows=on subsystemtype=windows serverdll=basesrv,1 serverdll=winsrv:userserverdllinitialization,3 serverdll=winsrv:conserverdllinitialization,2 profilecontrol=off maxrequestthreads=16"
-	cmdlinelist['winlogon'] = "winlogon.exe"
+	cmdlinelist['csrssXP'] = r'^(c:\\windows|%systemroot%)\\system32\\csrss.exe objectdirectory=\\windows sharedsection=\d{2,4},\d{3,6},\d{2,4} windows=on subsystemtype=windows [(serverdll=basesrv,1 |serverdll=winsrv:userserverdllinitialization,3 |serverdll=winsrv:conserverdllinitialization,2 |serverdll=sxssrv=4 )]+profilecontrol=off maxrequestthreads=16'
+	cmdlinelist['csrss7'] = r'^(c:\\windows|%systemroot%)\\system32\\csrss.exe objectdirectory=\\windows sharedsection=\d{2,4},\d{1,6},\d{2,4} windows=on subsystemtype=windows [(serverdll=basesrv,1 |serverdll=winsrv:userserverdllinitialization,3 |serverdll=winsrv:conserverdllinitialization,2 |serverdll=sxssrv=4 )]+profilecontrol=off maxrequestthreads=16'
+	cmdlinelist['winlogonXP'] = "winlogon.exe"
+	cmdlinelist['winlogon7'] = "winlogon.exe"
 	cmdlinelist['services'] = "c:\windows\system32\services.exe"
 	cmdlinelist['lsass'] = "c:\windows\system32\lsass.exe"
 	cmdlinelist['svchost'] = "svchost"
 	cmdlinelist['spoolsv'] = "c:\windows\system32\spoolsv.exe"
+	cmdlinelist['wininitXP'] = "c:\windows\system32\wininit.exe"
+	cmdlinelist['wininit7'] = "wininit.exe"
 
 	return namelist, pathlist, prioritylist, cmdlinelist
 
@@ -161,6 +181,10 @@ class malsysproc(common.AbstractWindowsCommand):
 	info['priority'] = self.check_priority(process, priority)
 	info['cmdline'] = self.check_cmdline(process, cmdline)
 	info['count'] = self.check_count(name, count)
+        info['time_val'] = ctime
+        info['process_time_val'] = process.CreateTime
+        info['cmdline_val'] = cmdline
+        info['cmdline_svchost'] = str(process.Peb.ProcessParameters.CommandLine).lower()
 	return info
 
 
@@ -181,7 +205,7 @@ class malsysproc(common.AbstractWindowsCommand):
 		systemctime = process.CreateTime
 
 	    # Look for non exited processes
-	    if process.ExitTime == systemctime:
+	    if process.ExitTime <= systemctime:
 
 	        # Look for a process that matches smss.exe with the possibility of the "ms" being switched around
 	        # smss.exe is the session manager, and there should only be one copy of this at most times
@@ -200,38 +224,47 @@ class malsysproc(common.AbstractWindowsCommand):
 	        # smss.exe is the parent of csrss.exe
 	        elif re.match(r'c...s\.exe',str(process.ImageFileName).lower()) is not None:
 		    sysproc = True
-		    name = 'csrss'
-		    parent = smsspid
 		    ctime = smssctime
 		    counter = None
+		    if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
+		        parent = None
+                        name = 'csrss7'
+                    else:
+		        parent = smsspid
+                        name = 'csrssXP'
 
 	        # Look for processes that look for winlogon.exe or winlogin.exe the second being an imposter
 	        # smss.exe is the parent of winlogon.exe
 	        # Should be one winlogon for each csrss.exe
 	        elif re.match(r'winlog.n\.exe',str(process.ImageFileName).lower()) is not None:
-		    if "2003" in config.PROFILE or "XP" in config.PROFILE:	        
-		        sysproc = True
-		        winpid = process.UniqueProcessId
-	                winctime = process.CreateTime
-			name = 'winlogon'
-			parent = smsspid
-			ctime = smssctime
-			counter = None		    
-		    else:
-		        print("WARNING: winlogon.exe should not be running on this OS Version")
+                    sysproc = True
+                    winlpid = process.UniqueProcessId
+                    winctime = process.CreateTime
+                    ctime = smssctime
+                    counter = None		    
+		    if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
+                        parent = None
+                        name = 'winlogon7'
+                    else:
+                        parent = smsspid
+                        name = 'winlogonXP'
 
 	        # In OS newer than XP lsass.exe and services.exe parent is wininit.exe
 	        elif str(process.ImageFileName).lower() == "wininit.exe":
+		    #if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
+		    sysproc = True
+	            winipid = process.UniqueProcessId
+	            winctime = process.CreateTime
+		    ctime = smssctime
+		    counter = None
 		    if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
-		        sysproc = True
-	                winpid = process.UniqueProcessId
-	                winctime = process.CreateTime
-			name = 'wininit'
-			parent = smsspid
-			ctime = smssctime
-			counter = None
-		    else:
-		        print("WARNING: wininit.exe should not be running on this OS Version")
+                        parent = None
+                        name = 'wininit7'
+                    else:
+	    	        parent = smsspid
+                        name = 'wininitXP'
+		    #else:
+		        #print("WARNING: wininit.exe should not be running on this OS Version")
 
 	        # In OS XP and prior lsass.exe's parent is winlogon.exe (XP) or wininit.exe (Vista)
 	        elif str(process.ImageFileName).lower() == "services.exe":		
@@ -241,9 +274,12 @@ class malsysproc(common.AbstractWindowsCommand):
 		    servicescounter += 1
 		    counter = servicescounter
 		    name = 'services'
-		    parent = winpid
 		    ctime = winctime
 		    counter = None
+		    if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
+                        parent = winipid
+                    else:
+	    	        parent = winlpid
 
 	        # Look for processes that look similar to lsass.exe, but may have the "sas" characters switched around
 	        # In Windows XP and older winlogon.exe is the parent of lsass.exe
@@ -253,8 +289,11 @@ class malsysproc(common.AbstractWindowsCommand):
 		    lsasscounter += 1
 		    counter = lsasscounter
 		    name = 'lsass'
-		    parent = winpid
 		    ctime = winctime
+		    if "Win7" in config.PROFILE or "Vista" in config.PROFILE or "2008" in config.PROFILE:
+                        parent = winipid
+                    else:
+	    	        parent = winlpid
 
 	        # Look for processes that look similar to svchost.exe, but may have the "vc" characters switched around
 	        # services.exe is the parent process for svchost.exe
@@ -306,4 +345,12 @@ class malsysproc(common.AbstractWindowsCommand):
 			   str(info['cmdline']),
 			   str(info['count'])
                            )
+
+            if self._config.VERBOSE and not (info['name'] and info['path'] and info['priority'] and info['time'] and info['cmdline'] and info['count']) or info['ppid'] == False:
+                if info['processname'] == "svchost.exe":
+                    outfd.write("{0:24s}: {1}\n".format("...Cmdline", info['cmdline_svchost']))
+                else:
+                    outfd.write("{0:24s}: {1}\n".format("...Cmdline", info['cmdline_val']))
+                outfd.write("{0:24s}: {1}\n".format("...Expected Parent Time", info['time_val']))
+                outfd.write("{0:24s}: {1}\n".format("...Create Time", info['process_time_val']))
 	print
